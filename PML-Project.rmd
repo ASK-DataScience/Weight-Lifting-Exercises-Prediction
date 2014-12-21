@@ -1,0 +1,133 @@
+---
+title: "Prediction of the quality of the exercise from accelerometers readings"
+output: html_document
+---
+
+## Summary
+In this report, we try to predict the quality of the exercise from different accelerometers readings. The accelerometers are placed on the belt, forearm, arm and dumbell. The six participants were asked to perform barbell lifts in 5 different ways, correctly and incorrectly. Prediction was done using random forest with **52** predictor and **25** repitions of bootstrapping. The prediction succeeded with out-of-sample estimate error rate of **0.83%**. 
+
+## Data
+The data used in this report is from the Weight Lifting Exercises Dataset in the Human Activity Recognition (HAR) project (see References). Six young participants (20-28 years) were asked to perform barbell lifts in 5 different ways defined in classes (A, B, C, D, and E). Different readings were taken from accelerometers placed on the belt, forearm, arm and dumbell. The data consists of **19,622** records and **160** features.
+
+```{r, echo=FALSE,results='hide', warning=FALSE, cache=TRUE, message=FALSE}
+# Loading data
+pml <- read.csv("./pml-training.csv")
+testCases <- read.csv("./pml-testing.csv")
+head(pml)
+summary(pml)
+str(pml)
+dim (pml)
+dim (testCases)
+```
+
+## Data Cleaning
+After removing the features with mostly NAs or missing values as well as the non-numeric features, we end up with 53 features instead of 160. 
+
+```{r, echo=FALSE,results='hide', warning=FALSE, cache=TRUE, message=FALSE}
+# Cleaning the data - replacing the missing values with NAs
+for(i in 1:ncol(pml)){
+        if (is.factor(pml[,i])){
+                if (levels(pml[,i])[1] == ""){
+                        levels(pml[,i])[1] <- NA  
+                }
+        }       
+}
+
+# Cleaning the data - Checking for missing values
+NAs <- rep(0, ncol(pml))
+for(i in 1:ncol(pml)){
+        NAs[i] <- sum(is.na(pml[,i]))/nrow(pml)        
+}
+NAs2 <- NAs > 0
+pml.NAs <- pml[,c(NAs2)]
+pml.filtered <- pml[,!names(pml) %in% names(pml.NAs)]
+summary(pml.filtered)
+
+# Cleaning the data - Removing unnecessary columns
+pml.filtered2 <- pml.filtered[,8:dim(pml.filtered)[2]]
+dim(pml.filtered2)
+
+```
+
+## Data Spliting
+Next, the data was splitted into training (60% of the data) and testing sets. The training set consists of 11,776 records while the testing set consists of 7,846.
+
+```{r, echo=FALSE,results='hide', warning=FALSE, cache=TRUE, message=FALSE}
+# Data Spliting
+library (caret)
+inTrain <- createDataPartition (y = pml.filtered2$classe,
+                                p = 0.60, list = FALSE)
+training <- pml.filtered2[inTrain,]
+testing <- pml.filtered2[-inTrain,]
+dim(training)
+dim(testing)
+
+```
+
+## Model Creation
+We used random forest with 11,776 samples and 52 predictors. Resampling was done using bootstrapping with 25 repitions. The final model used was mtry = 2 with accuracy of **98.54%**. The plot of the final model with different number of trees is shown below.
+
+
+```{r, echo=FALSE,results='hide', warning=FALSE, cache=TRUE, message=FALSE}
+# Run the model
+library("doSNOW")
+cl<-makeCluster(6) 
+registerDoSNOW(cl) 
+        set.seed(32323)
+        modelFit.rf <- train(classe ~ ., 
+                             data = training, 
+                             method = "rf")
+stopCluster(cl)
+# modelFit.rf <- load("my_model1.rda")
+
+# Calculate predictions for testing set
+predictions <- predict(modelFit.rf, newdata = testing[,-53])
+equalPredictions = (predictions == testing$classe)
+AccuracyTrain = sum(equalPredictions)/nrow(testing)*100
+conf <- confusionMatrix(predictions,testing$classe)
+
+
+newconf <- conf$table
+newconf[1:5] = round(newconf[1:5]/sum(newconf[1:5]),4)
+newconf[6:10] = round(newconf[6:10]/sum(newconf[6:10]),4)
+newconf[11:15] = round(newconf[11:15]/sum(newconf[11:15]),4)
+newconf[16:20] = round(newconf[16:20]/sum(newconf[16:20]),4)
+newconf[21:25] = round(newconf[21:25]/sum(newconf[21:25]),4)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, cache=TRUE, message=FALSE}
+modelFit.rf$finalModel
+plot (modelFit.rf$finalModel)
+```
+
+## Results
+Prediction is then calculated for the testing dataset, and the confusion matrix is generated as shown in the figures below. The prediction accuracy is **99.39%**.
+
+```{r, echo=FALSE, warning=FALSE, cache=TRUE, message=FALSE}
+#table(predictions, testing$classe)
+conf
+library(gplots)
+my_palette <- colorRampPalette(c("white", "brown"))(n = 299)
+col_breaks = c(seq(-1,0,length=100), seq(0,0.8,length=100), seq(0.8,1,length=100)) 
+heatmap.2(newconf,
+          cellnote = newconf,  
+          notecex=1.6,
+          main = "Confusion Matrix", 
+          notecol="black",      
+          density.info="none",  
+          trace="none",         
+          margins =c(5,5),     
+          col=my_palette,       
+          breaks=col_breaks,    
+          dendrogram="none",     
+          Colv="none",            
+          Rowv="none",
+          xlab = "Reference",
+          ylab = "Prediction")
+
+```
+
+## References
+- http://groupware.les.inf.puc-rio.br/har
+- Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
